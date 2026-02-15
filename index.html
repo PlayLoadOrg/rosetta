@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THE ROSETTA STONE — Cross-Domain Translation Engine</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Exo+2:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* AAA-compliant palette against #050505 background */
+  /* Gold: #ffcc33 on #050505 = ~11.5:1 ✓ AAA */
+  --gold: #ffcc33;
+  --gold-dim: #c89f2a;         /* ~7.2:1 ✓ AAA normal text */
+  --gold-glow: rgba(255,204,51,0.15);
+  --bg: #050505;
+  --panel: rgba(12,12,12,0.92);
+  --panel-border: rgba(255,204,51,0.22);
+  /* Primary text: #ede6d6 on #050505 = ~14.5:1 ✓ AAA */
+  --text-primary: #ede6d6;
+  /* Muted text: #b0a48e on #050505 = ~7.5:1 ✓ AAA normal text */
+  --text-muted: #b0a48e;
+  /* Dim/decorative (non-informational only): */
+  --text-dim: #7a7060;         /* ~3.7:1 — used ONLY for decorative, never essential info */
+  /* Domain colors — all ≥7:1 on #050505 for AAA */
+  --cyan: #7ed4f8;             /* ~10:1 ✓ */
+  --cyan-bg: rgba(126,212,248,0.10);
+  --cyan-dim: rgba(126,212,248,0.05);
+  --red: #f28b7d;              /* ~7.4:1 ✓ */
+  --red-bg: rgba(242,139,125,0.10);
+  --red-dim: rgba(242,139,125,0.05);
+  --green: #8fd694;            /* ~9.2:1 ✓ */
+  --green-bg: rgba(143,214,148,0.10);
+  --green-dim: rgba(143,214,148,0.05);
+  /* Focus ring */
+  --focus-ring: 0 0 0 3px var(--gold), 0 0 0 5px rgba(255,204,51,0.35);
+  /* Sizing base */
+  font-size: 16px;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: 'Exo 2', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Scanline overlay — decorative only, hidden from AT */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent 0px, transparent 2px, rgba(0,0,0,0.05) 2px, rgba(0,0,0,0.05) 4px);
+  pointer-events: none;
+  z-index: 9999;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::after { display: none; }
+}
+
+.bg-grid {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,204,51,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,204,51,0.025) 1px, transparent 1px);
+  background-size: 60px 60px;
+  z-index: 0;
+  aria-hidden: true;
+}
+
+.bg-vignette {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.75) 100%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Skip link */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--gold);
+  color: var(--bg);
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  font-size: 0.875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  z-index: 10000;
+  border-radius: 0 0 4px 4px;
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.app {
+  position: relative;
+  z-index: 1;
+  max-width: 68.75rem;
+  margin: 0 auto;
+  padding: 1.75rem 1.25rem 4.375rem;
+}
+
+/* ============ FOCUS STYLES (global) ============ */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ============ HEADER ============ */
+.header {
+  text-align: center;
+  margin-bottom: 2.25rem;
+  padding-bottom: 1.75rem;
+  border-bottom: 1px solid var(--panel-border);
+  position: relative;
+}
+
+.header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6.25rem;
+  height: 1px;
+  background: var(--gold);
+  box-shadow: 0 0 14px var(--gold);
+}
+
+.header-tag {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.375em;
+  color: var(--gold-dim);
+  text-transform: uppercase;
+  margin-bottom: 0.625rem;
+}
+
+.header h1 {
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  font-size: clamp(1.625rem, 5vw, 2.75rem);
+  letter-spacing: 0.5em;
+  text-transform: uppercase;
+  color: var(--gold);
+  text-shadow: 0 0 30px rgba(255,204,51,0.25);
+  line-height: 1.1;
+}
+
+.header-sub {
+  font-weight: 300;
+  font-size: clamp(0.875rem, 2vw, 1rem);
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+  letter-spacing: 0.0625em;
+}
+
+/* ============ THESIS ============ */
+.thesis {
+  max-width: 50rem;
+  margin: 0 auto 2.25rem;
+  padding: 1.25rem 1.5rem;
+  background: linear-gradient(135deg, rgba(255,204,51,0.04), transparent);
+  border: 1px solid var(--panel-border);
+  position: relative;
+}
+
+.thesis::before {
+  content: '//';
+  position: absolute;
+  top: 0.5rem;
+  left: 0.625rem;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6875rem;
+  color: var(--text-dim);
+  /* decorative — not essential info */
+  aria-hidden: true;
+}
+
+.thesis p { font-size: 0.9375rem; line-height: 1.7; font-weight: 300; }
+.thesis strong { color: var(--gold); font-weight: 600; }
+
+/* ============ DOMAIN FILTER BAR ============ */
+.domain-bar {
+  display: flex;
+  justify-content: center;
+  gap: 0.375rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background: var(--bg);
+  padding: 0.75rem 0;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.3s ease;
+}
+
+.domain-bar.stuck {
+  border-bottom-color: var(--panel-border);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+}
+
+.domain-chip {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.125em;
+  text-transform: uppercase;
+  padding: 0.5625rem 1.125rem;
+  background: transparent;
+  border: 1px solid var(--text-dim);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.domain-chip:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.domain-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.domain-chip[aria-pressed="true"] {
+  border-color: var(--c-color, var(--gold));
+  color: var(--c-color, var(--gold));
+  background: var(--c-bg, var(--gold-glow));
+  box-shadow: 0 0 14px var(--c-bg, var(--gold-glow));
+}
+
+.chip-dot {
+  display: inline-block;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  margin-right: 0.375rem;
+  vertical-align: middle;
+  opacity: 0.5;
+  transition: opacity 0.3s;
+}
+
+.domain-chip[aria-pressed="true"] .chip-dot { opacity: 1; }
+
+/* ============ DATA TABLE ============ */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 2.25rem;
+  table-layout: fixed;
+}
+
+.data-table thead { z-index: 100; }
+
+.data-table th {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.125em;
+  text-transform: uppercase;
+  padding: 0.625rem 0.875rem;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--panel-border);
+  text-align: center;
+  background: var(--bg);
+  font-weight: 400;
+  transition: all 0.3s;
+}
+
+.data-table th:first-child {
+  text-align: left;
+  color: var(--gold-dim);
+  width: 12.5rem;
+}
+
+.data-table th.col-active {
+  border-bottom-width: 2px;
+}
+
+/* Table rows */
+.data-table tbody tr {
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.25s ease;
+}
+
+.data-table tbody tr:hover {
+  border-color: var(--panel-border);
+}
+
+.data-table tbody tr:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+
+.data-table tbody tr[aria-expanded="true"] {
+  border-color: var(--gold-dim);
+  background: rgba(255,204,51,0.025);
+}
+
+.row-label-cell {
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  letter-spacing: 0.09375em;
+  text-transform: uppercase;
+  color: var(--gold);
+  padding: 0.875rem;
+  background: rgba(255,204,51,0.03);
+  border-right: 1px solid var(--panel-border);
+  line-height: 1.3;
+  vertical-align: middle;
+}
+
+tr[aria-expanded="true"] .row-label-cell {
+  background: rgba(255,204,51,0.06);
+}
+
+.row-num {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.625rem;
+  color: var(--gold-dim);
+  margin-right: 0.5rem;
+}
+
+.data-table td.cell {
+  padding: 0.75rem 0.875rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  border-right: 1px solid rgba(255,204,51,0.05);
+  transition: all 0.3s ease;
+  vertical-align: middle;
+}
+
+.data-table td.cell:last-child { border-right: none; }
+.data-table td.cell.lit { color: var(--text-primary); background: rgba(255,204,51,0.025); }
+.data-table td.cell.focus { font-weight: 500; }
+
+/* ============ DETAIL PANEL ============ */
+.detail-row td {
+  padding: 0 !important;
+  border: none !important;
+}
+
+.detail {
+  animation: slideIn 0.25s ease;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.detail-inner {
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  position: relative;
+  overflow: hidden;
+  max-width: 50rem;
+  margin: 0.5rem auto 0.5rem;
+}
+
+.detail-inner::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+
+.detail-header {
+  padding: 1.25rem 1.5rem 1rem;
+  border-bottom: 1px solid rgba(255,204,51,0.08);
+}
+
+.detail-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  font-size: 1.125rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.detail-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+}
+
+.d-card {
+  padding: 1.125rem 1.25rem;
+  border-right: 1px solid rgba(255,204,51,0.06);
+  transition: background 0.3s;
+}
+
+.d-card:last-child { border-right: none; }
+.d-card:hover { background: rgba(255,255,255,0.015); }
+
+.d-card-domain {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.1875em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.d-card-dot {
+  width: 0.3125rem;
+  height: 0.3125rem;
+  border-radius: 50%;
+  /* decorative — domain also labeled in text */
+}
+
+.d-card-text {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.insight-bar {
+  padding: 1.125rem 1.5rem;
+  border-top: 1px solid rgba(255,204,51,0.08);
+  background: rgba(255,204,51,0.025);
+}
+
+.insight-tag {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.1875em;
+  color: var(--gold-dim);
+  margin-bottom: 0.375rem;
+}
+
+.insight-text {
+  font-size: 0.875rem;
+  line-height: 1.7;
+  font-weight: 300;
+}
+
+/* ============ FOOTER ============ */
+.footer {
+  max-width: 50rem;
+  margin: 2.75rem auto 0;
+  text-align: center;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--panel-border);
+  position: relative;
+}
+
+.footer::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 5rem;
+  height: 1px;
+  background: var(--gold);
+  box-shadow: 0 0 10px var(--gold);
+}
+
+.footer p {
+  font-weight: 300;
+  font-size: 0.9375rem;
+  line-height: 1.8;
+  color: var(--text-muted);
+}
+.footer strong { color: var(--gold); font-weight: 600; }
+
+/* ============ LIVE REGION (screen reader announcements) ============ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ============ RESPONSIVE ============ */
+@media (max-width: 50rem) {
+  .data-table thead { display: none; }
+
+  .data-table tbody tr {
+    display: block;
+    margin-bottom: 0.125rem;
+  }
+
+  .row-label-cell {
+    display: block;
+    border-right: none;
+    border-bottom: 1px solid var(--panel-border);
+  }
+
+  .data-table td.cell {
+    display: block;
+    border-right: none;
+    border-bottom: 1px solid rgba(255,204,51,0.04);
+    padding-left: 5rem;
+    position: relative;
+  }
+
+  .data-table td.cell::before {
+    content: attr(data-domain);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.5625rem;
+    letter-spacing: 0.125em;
+    text-transform: uppercase;
+    position: absolute;
+    left: 0.875rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+  }
+
+  .detail-cards { grid-template-columns: 1fr; }
+  .d-card { border-right: none; border-bottom: 1px solid rgba(255,204,51,0.06); }
+
+  .detail-row td {
+    display: block;
+  }
+}
+</style>
+</head>
+<body>
+
+<a href="#main-content" class="skip-link">Skip to main content</a>
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="bg-vignette" aria-hidden="true"></div>
+
+<div class="app" id="app">
+  <main id="main-content">
+    <!-- Rendered by JS -->
+  </main>
+</div>
+
+<!-- Live region for screen reader announcements -->
+<div id="sr-announce" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<script>
+const DOMAINS = [
+  { id: 'cs', name: 'Computer Science', short: 'CS', color: '#7ed4f8', bg: 'rgba(126,212,248,0.10)', dim: 'rgba(126,212,248,0.05)' },
+  { id: 'mil', name: 'OODA / Military', short: 'OODA', color: '#f28b7d', bg: 'rgba(242,139,125,0.10)', dim: 'rgba(242,139,125,0.05)' },
+  { id: 'change', name: 'Change Leadership', short: 'CHANGE', color: '#8fd694', bg: 'rgba(143,214,148,0.10)', dim: 'rgba(143,214,148,0.05)' },
+];
+
+const DATA = [
+  {
+    name: 'The Loop Itself',
+    insight: 'Every domain has independently discovered that survival requires a continuous cycle of sensing, modeling, deciding, and acting. The names differ. The structure is identical.',
+    cells: ['Update / render cycle', 'OODA loop', 'Plan-Do-Check-Act / change cycle']
+  },
+  {
+    name: 'Building a Model of Reality',
+    insight: 'Raw data is useless without interpretation. This is where most systems win or lose — the quality of model-building determines everything downstream.',
+    cells: ['State management', 'Orient', 'Sensemaking / shared mental models']
+  },
+  {
+    name: 'The Model Itself',
+    insight: 'When domains say "schema" or "worldview" or "culture," they mean the same thing: the accumulated structure that shapes what the system can even perceive.',
+    cells: ['Data structure / schema', 'Orientation (worldview, culture, experience)', 'Organizational culture / paradigm']
+  },
+  {
+    name: 'Model Corruption',
+    insight: 'Every model degrades. The failure mode is universal: the internal representation drifts from reality, but the system keeps acting as if the old model is still true.',
+    cells: ['State desync / stale cache', 'Orientation lock-in / dogma', 'Groupthink / normalcy bias']
+  },
+  {
+    name: 'Efficient Model Updating',
+    insight: 'Smart systems don\'t rebuild from scratch — they identify what changed and update only that. The principle of minimal recomputation is universal.',
+    cells: ['Dirty flags / diffing / incremental recompute', 'Implicit guidance and control', 'Change champions as local caches']
+  },
+  {
+    name: 'Speed of the Loop',
+    insight: 'The system that cycles faster operates inside the loop of the system that cycles slower. Boyd\'s core insight — but it was always an engineering truth.',
+    cells: ['Frame rate / tick rate', 'Tempo', 'Agility / time-to-decision']
+  },
+  {
+    name: 'Cost of the Loop',
+    insight: 'Every cycle has overhead. The friction of running the loop can destroy the system if ignored.',
+    cells: ['Computational overhead / memory budget', 'Friction / fog of war / bureaucratic drag', 'Meeting load / context-switching / political capital']
+  },
+  {
+    name: 'What Kills the System',
+    insight: 'The lethal failure is never a single bad cycle — it\'s the inability to adapt the loop itself. Rigidity is death, in every domain.',
+    cells: ['Unbounded state complexity', 'Inability to reorient', 'Loss of trust / learned helplessness']
+  },
+  {
+    name: 'The Bottleneck Everyone Misunderstands',
+    insight: 'This is the row that makes the entire chart worth building. In every domain, practitioners optimize the wrong layer. The visible output is never the bottleneck — the invisible model is.',
+    cells: ['Optimizing render when the problem is state management', 'Optimizing decision speed when the problem is orientation', 'Optimizing communication when the problem is mental models']
+  },
+  {
+    name: 'How Autonomy Scales',
+    insight: 'Every domain that has figured out scale arrives at the same answer: distribute decision-making within shared constraints. The architecture of trust is universal.',
+    cells: ['Microservices / modular architecture', 'Auftragstaktik (mission-type tactics)', 'Decentralized authority with shared principles']
+  },
+];
+
+let activeDomain = null;
+let activeRow = null;
+
+function announce(msg) {
+  const el = document.getElementById('sr-announce');
+  el.textContent = '';
+  requestAnimationFrame(() => { el.textContent = msg; });
+}
+
+function render() {
+  const main = document.querySelector('#main-content');
+  let h = '';
+
+  // Header
+  h += `
+    <header class="header" role="banner">
+      <div class="header-tag" aria-hidden="true">Cross-Domain Translation Engine</div>
+      <h1>The Rosetta Stone</h1>
+      <p class="header-sub">One Phenomenon, Three Languages</p>
+    </header>
+    <section class="thesis" aria-label="Core thesis">
+      <p>Every adaptive system faces the same challenge: <strong>sense a changing environment, update an internal model, decide, and act</strong>, in a loop whose survival depends on the fidelity, speed, and efficiency of that cycle. Three disciplines have each built sophisticated vocabulary for this single phenomenon. They rarely talk to each other. This is the translation layer.</p>
+    </section>
+  `;
+
+  // Domain filter bar
+  h += '<nav class="domain-bar" role="toolbar" aria-label="Filter by domain">';
+  h += `<button class="domain-chip" aria-pressed="${activeDomain===null}" style="--c-color:var(--gold);--c-bg:var(--gold-glow);" data-filter="all"><span class="chip-dot" style="background:var(--gold)" aria-hidden="true"></span>All</button>`;
+  DOMAINS.forEach((d, i) => {
+    h += `<button class="domain-chip" aria-pressed="${activeDomain===i}" style="--c-color:${d.color};--c-bg:${d.bg};" data-filter="${i}"><span class="chip-dot" style="background:${d.color}" aria-hidden="true"></span>${d.short}</button>`;
+  });
+  h += '</nav>';
+
+  // Data table — proper semantic table
+  h += '<table class="data-table" aria-label="Cross-domain concept translations">';
+  h += '<thead><tr>';
+  h += '<th scope="col">Phenomenon</th>';
+  DOMAINS.forEach((d, i) => {
+    const on = activeDomain === null || activeDomain === i;
+    const style = on ? `color:${d.color};border-bottom-color:${d.color};border-bottom-width:2px;background:${d.dim}` : '';
+    h += `<th scope="col" class="${on ? 'col-active' : ''}" style="${style}">${d.name}</th>`;
+  });
+  h += '</tr></thead>';
+  h += '<tbody>';
+
+  DATA.forEach((p, pi) => {
+    const open = activeRow === pi;
+    const rowId = `row-${pi}`;
+    const detailId = `detail-${pi}`;
+
+    h += `<tr role="row" tabindex="0" aria-expanded="${open}" aria-controls="${detailId}" data-row="${pi}" id="${rowId}">`;
+    h += `<th scope="row" class="row-label-cell"><span class="row-num" aria-hidden="true">${String(pi+1).padStart(2,'0')}</span>${p.name}</th>`;
+    p.cells.forEach((c, ci) => {
+      const d = DOMAINS[ci];
+      let cls = 'cell';
+      if (activeDomain === null) cls += ' lit';
+      else if (activeDomain === ci) cls += ' lit focus';
+      const s = activeDomain === ci ? `color:${d.color};background:${d.bg}` : '';
+      h += `<td class="${cls}" style="${s}" data-domain="${d.short}" headers="${rowId}">${c}</td>`;
+    });
+    h += '</tr>';
+
+    // Detail/expand panel row
+    if (open) {
+      h += `<tr class="detail-row" id="${detailId}" role="row">`;
+      h += `<td colspan="${DOMAINS.length + 1}">`;
+      h += '<div class="detail" role="region" aria-label="' + p.name + ' — expanded details">';
+      h += '<div class="detail-inner">';
+      h += `<div class="detail-header"><h2 class="detail-title">${p.name}</h2></div>`;
+      h += '<div class="detail-cards">';
+      p.cells.forEach((c, ci) => {
+        const d = DOMAINS[ci];
+        h += `<div class="d-card"><div class="d-card-domain" style="color:${d.color}"><span class="d-card-dot" style="background:${d.color}" aria-hidden="true"></span>${d.name}</div><div class="d-card-text">${c}</div></div>`;
+      });
+      h += '</div>';
+      h += `<div class="insight-bar"><div class="insight-tag" aria-hidden="true">// Cross-Domain Insight</div><p class="insight-text">${p.insight}</p></div>`;
+      h += '</div></div>';
+      h += '</td></tr>';
+    } else {
+      // Hidden row for aria-controls target
+      h += `<tr class="detail-row" id="${detailId}" hidden><td colspan="${DOMAINS.length + 1}"></td></tr>`;
+    }
+  });
+
+  h += '</tbody></table>';
+
+  // Footer
+  h += `<footer class="footer"><p>Every adaptive system is a loop. The loop's quality is bottlenecked by <strong>orientation, not action</strong>. The universal failure mode is optimizing the visible output while neglecting the internal model that generates it.</p></footer>`;
+
+  main.innerHTML = h;
+
+  // Bind events after render
+  bindEvents();
+}
+
+function bindEvents() {
+  // Domain filter buttons
+  document.querySelectorAll('.domain-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const f = btn.dataset.filter;
+      activeDomain = f === 'all' ? null : parseInt(f, 10);
+      const label = activeDomain === null ? 'All domains' : DOMAINS[activeDomain].name;
+      announce('Filtered to: ' + label);
+      render();
+    });
+  });
+
+  // Arrow key navigation in toolbar
+  const toolbar = document.querySelector('[role="toolbar"]');
+  if (toolbar) {
+    const chips = Array.from(toolbar.querySelectorAll('.domain-chip'));
+    toolbar.addEventListener('keydown', (e) => {
+      const idx = chips.indexOf(document.activeElement);
+      if (idx === -1) return;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        chips[(idx + 1) % chips.length].focus();
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        chips[(idx - 1 + chips.length) % chips.length].focus();
+      }
+    });
+  }
+
+  // Table row clicks & keyboard
+  document.querySelectorAll('tr[data-row]').forEach(tr => {
+    const handler = () => {
+      const i = parseInt(tr.dataset.row, 10);
+      const wasOpen = activeRow === i;
+      activeRow = wasOpen ? null : i;
+      announce(wasOpen ? DATA[i].name + ' collapsed' : DATA[i].name + ' expanded');
+      render();
+      // Restore focus to the toggled row
+      requestAnimationFrame(() => {
+        const row = document.querySelector(`tr[data-row="${i}"]`);
+        if (row) row.focus();
+        if (!wasOpen) {
+          setTimeout(() => {
+            const det = document.querySelector(`#detail-${i}`);
+            if (det) det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }, 60);
+        }
+      });
+    };
+
+    tr.addEventListener('click', handler);
+    tr.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handler();
+      }
+    });
+  });
+}
+
+render();
+
+// Sticky bar: add shadow when scrolled
+function setupSticky() {
+  const bar = document.querySelector('.domain-bar');
+  if (!bar) return;
+  const sentinel = document.createElement('div');
+  sentinel.style.cssText = 'height:1px;width:100%;pointer-events:none;position:absolute;top:0;';
+  bar.parentNode.insertBefore(sentinel, bar);
+  new IntersectionObserver(
+    ([e]) => { bar.classList.toggle('stuck', !e.isIntersecting); },
+    { threshold: [1] }
+  ).observe(sentinel);
+}
+setupSticky();
+</script>
+</body>
+</html>
